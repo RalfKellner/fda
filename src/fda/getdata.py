@@ -3,9 +3,9 @@ import pandas as pd
 import time
 import json
 import os
-import time
 
-def get_sec_companies(headers):
+
+def get_sec_companies(email):
 
     '''
     
@@ -13,18 +13,19 @@ def get_sec_companies(headers):
 
     Parameters:
     --------
-    headers: dict
-        a dictionary which sends the user information to the API request
+    email: str
+        an email which identifies the user to the API request
 
     Returns:
     ---------
     pd.DataFrame
 
     Example:
-    >>> headers = {'User-Agent': "firsname.lastname@organization.com"}
-    >>> sec_companies = get_sec_companies(headers)
+    >>> sec_companies = get_sec_companies("firsname.lastname@organization.com")
 
     '''
+
+    headers = {'User-Agent': 'email'}
 
     url = 'https://www.sec.gov/files/company_tickers.json'
     r = requests.get(url, headers=headers)
@@ -35,7 +36,7 @@ def get_sec_companies(headers):
     return tickers_cik.loc[:, ['ticker', 'title', 'cik', 'cik_long']]
 
 
-def get_company_information(sec_companies, submission_dir):
+def get_sec_company_information(sec_companies, submission_dir):
 
     '''
 
@@ -100,27 +101,7 @@ def get_company_information(sec_companies, submission_dir):
     return company_info
 
 
-def get_cik_filings(cik, headers):
-
-    assert isinstance(cik, str) and len(cik) == 10, 'cik must be a 10 digit identifier in string format'
-
-    # get a list of all filings for a company
-    url = f'https://data.sec.gov/submissions/CIK{cik}.json'
-    r = requests.get(url, headers = headers)
-    filings = pd.DataFrame(r.json()['filings']['recent'])
-
-    # if more than 1000 recent filings exist, they can be found under the files key
-    for extra_filings in r.json()['filings']['files']:
-        url_tmp = f'https://data.sec.gov/submissions/' + extra_filings['name']
-        r_tmp = requests.get(url_tmp, headers = headers)
-        filings = pd.concat((filings, pd.DataFrame(r_tmp.json())), axis = 0)
-        time.sleep(.1)
-
-    filings.reset_index(drop = True, inplace = True)
-    return filings
-
-
-def get_company_sec_filings(cik, submission_dir = None, email = None):
+def get_seccompany_filings(cik, submission_dir = None, email = None):
 
     assert isinstance(cik, str) and len(cik) == 10, 'cik must be a 10 digit identifier in string format'
 
@@ -177,4 +158,48 @@ def get_company_sec_filings(cik, submission_dir = None, email = None):
     filings.sort_values(by = 'acceptanceDateTime', inplace = True)
     filings.reset_index(drop = True, inplace = True)
     
-    return filings_df
+    return filings
+
+
+def get_fmp_stock_data(apikey, ticker, start_date = None, end_date = None):
+
+    '''
+    A functiono to download historical stock market data using the financial modeling prep api (https://site.financialmodelingprep.com/developer/docs/).
+
+    Parameters:
+    ------------
+    apikey: str
+        the fmp api key
+
+    ticker: str
+        the symbol which is used to identify stocks at stock market places
+
+    start_date (optional): str (YYYY-MM-DD)
+        the start date
+
+    end_date (optional): str (YYYY-MM-DD)
+        the end date of the time series
+
+    Returns:
+    ---------
+    pd.DataFrame
+        the data frame contains historical open, high, low, close, adjusted close prices and trading volumne
+    '''
+    
+    url = f'https://financialmodelingprep.com/api/v3/historical-price-full/{ticker}'
+
+    if end_date and not(start_date):
+        raise ValueError('Please provide a start_date when providing an end_date.')
+
+    parameters = {'apikey': apikey}
+    if start_date:
+        parameters['from'] = start_date
+    if end_date:
+        parameters['to'] = end_date
+
+    r = requests.get(url, params = parameters)
+
+    ts = pd.DataFrame(r.json()['historical'])
+    ts.sort_values(by = 'date', inplace = True)
+    ts.reset_index(drop = True, inplace = True)
+    return ts.loc[:, ['open', 'high', 'low', 'close', 'adjClose', 'volume']]
